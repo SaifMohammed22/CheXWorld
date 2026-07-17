@@ -12,6 +12,7 @@ from .xray_transform_add import build_world_model_dual_transform
 from .nih import NIH
 from .chexpert import CheXpert
 from .siim import SIIM
+from .chest_xray import ChestXray
 
 def build_dataset(args, split='train', ten_crop=False):
     transform = build_transform_xray(args, is_train=(split == 'train'), ten_crop=ten_crop)
@@ -34,6 +35,8 @@ def build_dataset(args, split='train', ten_crop=False):
         dataset = ShenZhenCXR(split=split, transform=transform)
     elif args.dataset == 'chex':
         dataset = CheXpert(transform=transform, return_label=True, data_pct=args.data_pct, split=split)
+    elif args.dataset == 'chest_xray':
+        dataset = ChestXray(transform=transform, return_label=True, data_pct=args.data_pct, split=split)
     else:
         raise NotImplementedError
     if args.dataset_cat > 1 and split == 'train':

@@ -26,10 +26,10 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 def build_args(seed):
-    """Synthetic args for building the chexpert dataset"""
+    """Synthetic args for building the chest_xray OOD dataset"""
 
     defaults = {
-        "dataset": "chex",
+        "dataset": "chest_xray",
         "data_pct": 1.0,
         "dataset_cat": 1,
         "dataset_seed": seed,
@@ -45,28 +45,27 @@ def build_args(seed):
         "iwm_blur_prob": 0.2,
         "iwm_noise_prob": 0.0,
         "iwm_noise_range": (0.05, 0.2),
-        "batch_size": 8,
+        "batch_size": 16,
         "shuffle_seed": seed,
         # cp related
         "alpha": 0.1,
-        "calib_fraction": 0.7,
+        "calib_fraction": 0.2,
     }
 
     return Namespace(**defaults)
 
 
 def build_chex_dataset(args):
-    dataset = build_dataset(args, split="test")
+    dataset = build_dataset(args, split="train")
     logger.info(
-        f"step 1: loaded {type(dataset).__name__} validation set with {len(dataset)} samples")
-    sample = dataset[0]
+        f"loaded {type(dataset).__name__} set with {len(dataset)} samples")
     return dataset
 
 
 def load_model():
     from load_model import model
 
-    logger.info("step 2: model loaded")
+    logger.info("model loaded")
     return model
 
 
@@ -93,17 +92,19 @@ def compute_embedding_scores(model, imgs):
         # z -> predictor output -> predicted target embeddings
         z = model.forward_context_with_z(
             z_enc, aug_params, masks_enc, masks_pred)
-
-    scores = (z - h).pow(2).mean(dim=(1, 2))
+    # use l2 norm for as non-conformity score
+    scores = (z - h).norm(dim=(1, 2))
     return scores, z, h
 
 
 def forward_pass(model, dataset):
     sample_imgs = torch.stack([dataset[0][0], dataset[1][0]], dim=0)
     scores, z, h = compute_embedding_scores(model, sample_imgs)
-
-    logger.info(f"step 3: imgs shape = {tuple(sample_imgs.shape)}")
-    logger.info(f"step 3: l2 gap = {scores.mean().item():.6f}")
+    
+    logger.info("------------Sanity Check------------")
+    logger.info(f"check: imgs shape = {tuple(sample_imgs.shape)}")
+    logger.info(f"check: l2 gap = {scores.mean().item():.6f}")
+    logger.info("------------------------------------")
     return z, h
 
 
@@ -115,18 +116,12 @@ def split_for_conformal(dataset, calib_fraction, seed):
     generator.manual_seed(seed)
     perm = torch.randperm(num_samples, generator=generator).tolist()
     calib_indices = perm[:num_calib]
-    test_indices = perm[num_calib:]
+    test_indices = perm[num_calib:num_calib + 100]
     return Subset(dataset, calib_indices), Subset(dataset, test_indices)
 
 
-def collect_scores(model, dataset, batch_size, shuffle_seed=None):
-    if shuffle_seed is None:
-        loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-    else:
-        generator = torch.Generator()
-        generator.manual_seed(shuffle_seed)
-        loader = DataLoader(
-            dataset, batch_size=batch_size, shuffle=True, generator=generator)
+def collect_scores(model, dataset, batch_size):
+    loader = DataLoader(dataset, batch_size=batch_size)
     all_scores = []
     for batch in loader:
         imgs = batch[0]
@@ -147,32 +142,38 @@ def vanilla_cp(model, dataset, args):
     calib_dataset, test_dataset = split_for_conformal(
         dataset, args.calib_fraction, args.shuffle_seed)
     calib_scores = collect_scores(
-        model, calib_dataset, args.batch_size, shuffle_seed=args.shuffle_seed + 1)
+        model, calib_dataset, args.batch_size)
     q_hat = conformal_quantile(calib_scores, args.alpha)
 
     test_scores = collect_scores(
-        model, test_dataset, args.batch_size, shuffle_seed=args.shuffle_seed + 2)
+        model, test_dataset, args.batch_size)
     accepted = test_scores <= q_hat
     coverage = accepted.float().mean().item()
 
-    logger.info(f"step 4: calibration size = {len(calib_dataset)}")
-    logger.info(f"step 4: test size = {len(test_dataset)}")
-    logger.info(f"step 4: alpha = {args.alpha:.3f}")
-    logger.info(f"step 4: q_hat = {q_hat:.6f}")
-    logger.info(f"step 4: coverage = {coverage:.3f}")
+    logger.info(f"calibration size = {len(calib_dataset)}")
+    logger.info(f"test size = {len(test_dataset)}")
+    logger.info(f"alpha = {args.alpha:.3f}")
+    logger.info(f"q_hat = {q_hat:.6f}")
+    logger.info(f"coverage = {coverage:.3f}")
     logger.info("*" * 200)
-    # logger.info(f"step 4: calibration score mean = {calib_scores.mean().item():.6f}")
-    # logger.info(f"step 4: test score mean = {test_scores.mean().item():.6f}")
-    # logger.info(
-    #     f"step 4: first 5 test scores = {[round(v, 6) for v in test_scores[:5].tolist()]}")
     return q_hat, calib_scores, test_scores, accepted
 
 
 if __name__ == "__main__":
-    seeds = [42]
+    seeds = list(range(2))
+    # sanity check
+    dataset = build_chex_dataset(build_args(seeds[0]))
+    model = load_model()
+    forward_pass(model, dataset)
+
+    coverages = []
     for seed in seeds:
         args = build_args(seed)
         dataset = build_chex_dataset(args)
-        model = load_model()
-        forward_pass(model, dataset)
-        vanilla_cp(model, dataset, args)
+        _, _, _, accepted = vanilla_cp(model, dataset, args)
+        coverages.append(accepted.float().mean().item())
+
+    coverages = torch.tensor(coverages)
+    logger.info(f"multi-seed (n={len(seeds)}) marginal coverage: "
+                f"mean = {coverages.mean():.4f}")
+    logger.info("=" * 200)

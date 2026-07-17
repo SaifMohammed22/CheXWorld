@@ -4,7 +4,10 @@ import torch
 from .utils import token_to_grid
 from timm.models.vision_transformer import VisionTransformer
 # from monai.networks.nets import unetr
-from .dinov2.models.vision_transformer import DinoVisionTransformer
+try:
+    from .dinov2.models.vision_transformer import DinoVisionTransformer
+except:
+    DinoVisionTransformer = None
 
 
 class BasicBlock(nn.Module):

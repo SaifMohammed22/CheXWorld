@@ -15,49 +15,64 @@ CHEXPERT_UNCERTAIN_MAPPINGS = {
     "Edema": 1,
     "Pleural Effusion": 1,
 }
-CHEXPERT_COMPETITION_TASKS = ['Atelectasis', 'Cardiomegaly', 'Consolidation', 'Edema', 'Pleural Effusion']
+CHEXPERT_COMPETITION_TASKS = [
+    'Atelectasis', 'Cardiomegaly', 'Consolidation', 'Edema', 'Pleural Effusion']
+
 
 class CheXpert(data.Dataset):
     def __init__(self, transform=None, return_label=False, data_pct=1.0, split='train', enhance_class=['Cardiomegaly', 'Consolidation'], enhance_times=0, include_lateral=False):
         super().__init__()
         root = get_dataset_path('CheXpert')
-        self.CLASS_NAMES = ['atelectasis', 'cardiomegaly', 'consolidation', 'edema', 'pleural effusion']
+        self.CLASS_NAMES = ['atelectasis', 'cardiomegaly',
+                            'consolidation', 'edema', 'pleural effusion']
         assert split in ('train', 'val', 'test')
         SPLIT_MAP = {'train': 'train', 'val': 'valid', 'test': 'valid'}
         self.pathologies = CHEXPERT_COMPETITION_TASKS
         self.num_classes = len(self.pathologies)
-        self.df = pd.read_csv(os.path.join(root, f'{SPLIT_MAP[split]}.csv'))
+        csv_path = os.path.join(root, f'{SPLIT_MAP[split]}.csv')
+        if not os.path.exists(csv_path):
+            alt_csv_path = os.path.join(root, '.csv')
+            if os.path.exists(alt_csv_path):
+                csv_path = alt_csv_path
+        self.df = pd.read_csv(csv_path)
+        self.df.columns = self.df.columns.astype(str).str.strip()
         if not include_lateral:
-            self.df = self.df[self.df['Frontal/Lateral'] == 'Frontal']
+            self.df = self.df[self.df['Frontal/Lateral']
+                              .astype(str).str.strip() == 'Frontal']
         if split == 'train':
             self.df = self.df.sample(frac=data_pct, random_state=42)
+        self.df = self.df.copy()
         self.split = split
         # # fill na with 0s
         # self.df = self.df.fillna(0)
         # # replace uncertains
         # uncertain_mask = {k: -1 for k in CHEXPERT_COMPETITION_TASKS}
         # self.df = self.df.replace(uncertain_mask, CHEXPERT_UNCERTAIN_MAPPINGS)
-        
-        for col in CHEXPERT_COMPETITION_TASKS: # from libauc
+
+        for col in CHEXPERT_COMPETITION_TASKS:  # from libauc
             if col in ['Edema', 'Atelectasis']:
-                self.df[col].replace(-1, 1, inplace=True)  
-                self.df[col].fillna(0, inplace=True) 
-            elif col in ['Cardiomegaly','Consolidation',  'Pleural Effusion']:
-                self.df[col].replace(-1, 0, inplace=True) 
-                self.df[col].fillna(0, inplace=True)
-            elif col in ['No Finding', 'Enlarged Cardiomediastinum', 'Lung Opacity', 'Lung Lesion', 'Pneumonia', 'Pneumothorax', 'Pleural Other','Fracture','Support Devices']: # other labels
-                self.df[col].replace(-1, 0, inplace=True) 
-                self.df[col].fillna(0, inplace=True)
+                self.df[col] = self.df[col].replace(-1, 1).fillna(0)
+            elif col in ['Cardiomegaly', 'Consolidation',  'Pleural Effusion']:
+                self.df[col] = self.df[col].replace(-1, 0).fillna(0)
+            elif col in ['No Finding', 'Enlarged Cardiomediastinum', 'Lung Opacity', 'Lung Lesion', 'Pneumonia', 'Pneumothorax', 'Pleural Other', 'Fracture', 'Support Devices']:  # other labels
+                self.df[col] = self.df[col].replace(-1, 0).fillna(0)
             else:
-                self.df[col].fillna(0, inplace=True)
+                self.df[col] = self.df[col].fillna(0)
 
         self.labels = self.df[self.pathologies].values.tolist()
-        self.img_list = [os.path.join(root, path) for path in self.df['Path'].tolist()]
-        
+        path_list = self.df['Path'].astype(str).tolist()
+        path_list = [path.replace('CheXpert-v1.0-small/valid/', '')
+                     for path in path_list]
+        path_list = [path.replace('CheXpert-v1.0-small/train/', '')
+                     for path in path_list]
+        print(path_list)
+        self.img_list = [os.path.join(root, path) for path in path_list]
+
         if split == 'train':
             en_img_list = []
             en_labels = []
-            en_indices = [CHEXPERT_COMPETITION_TASKS.index(en_cls) for en_cls in enhance_class]
+            en_indices = [CHEXPERT_COMPETITION_TASKS.index(
+                en_cls) for en_cls in enhance_class]
             for img, lab in zip(self.img_list, self.labels):
                 en = False
                 for en_index in en_indices:
@@ -66,10 +81,10 @@ class CheXpert(data.Dataset):
                 if en:
                     en_img_list += [img] * enhance_times
                     en_labels += [lab] * enhance_times
-            
+
             self.img_list.extend(en_img_list)
             self.labels.extend(en_labels)
-    
+
         self.transform = transform
         self.return_label = return_label
         logging.info(f'CheXpert {split} size: {len(self.img_list)}')
@@ -84,14 +99,11 @@ class CheXpert(data.Dataset):
 
         if self.transform != None:
             img = self.transform(img)
-        
+
         if not self.return_label:
             return img
-        
+
         if self.split == 'train':
             return img, torch.FloatTensor(label)
         else:
             return img, img_path, torch.FloatTensor(label)
-
-
-

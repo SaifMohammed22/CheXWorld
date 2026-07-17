@@ -137,3 +137,10 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
+# VS code
+.vscode/
+
+# Data & Checkpoints
+data/
+chexworld_pretrained.tar
+

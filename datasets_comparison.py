@@ -104,32 +104,44 @@ if __name__ == "__main__":
 
     chex_paths = load_images_recursive(os.path.join(DATA_DIR, "CheXpert", "valid"))
     chest_paths = load_images_flat(os.path.join(DATA_DIR, "ChestXray"), "train")
+    chd_paths = load_images_recursive(os.path.join(DATA_DIR, "CHD-CXR", "train"))
 
     logging.info(f"CheXpert: {len(chex_paths)} samples")
     logging.info(f"ChestXray: {len(chest_paths)} samples")
+    logging.info(f"CHD-CXR: {len(chd_paths)} samples")
+
 
     chest_paths = subsample(chest_paths, len(chex_paths), rng)
+    chd_paths = subsample(chd_paths, len(chex_paths), rng)
     logging.info(f"ChestXray subsampled to: {len(chest_paths)} samples")
+    logging.info(f"CHD-CXR subsampled to: {len(chd_paths)} samples")
 
     logging.info("Extracting stats...")
     X_id = stats_matrix([extract_stats(p) for p in chex_paths])
     X_ood = stats_matrix([extract_stats(p) for p in chest_paths])
+    X_ood_chd = stats_matrix([extract_stats(p) for p in chd_paths])
 
     d_id, d_ood = compute_mahalanobis(X_id, X_ood)
+    d_id, d_ood_chd = compute_mahalanobis(X_id, X_ood_chd)
 
     logging.info("=" * 60)
     logging.info("MAHALANOBIS DISTANCE")
     logging.info(f"  CheXpert (ID):   mean={d_id.mean():.4f}  std={d_id.std():.4f}  median={np.median(d_id):.4f}")
     logging.info(f"  ChestXray (OOD): mean={d_ood.mean():.4f}  std={d_ood.std():.4f}  median={np.median(d_ood):.4f}")
+    logging.info(f"  CHD-CXR (OOD): mean={d_ood_chd.mean():.4f}  std={d_ood_chd.std():.4f}  median={np.median(d_ood_chd):.4f}")
 
     ks, pv = ks_2samp(d_id, d_ood)
+    ks2, pv2 = ks_2samp(d_id, d_ood_chd)
     logging.info(f"  KS test: stat={ks:.4f}  p-value={pv:.2e}")
+    logging.info(f"  KS test: stat={ks2:.4f}  p-value={pv2:.2e}")
 
-    logging.info("")
+    logging.info("")    
     logging.info("PER-STATISTIC MEANS")
     for i, k in enumerate(STAT_KEYS):
         m1, s1 = X_id[:, i].mean(), X_id[:, i].std()
         m2, s2 = X_ood[:, i].mean(), X_ood[:, i].std()
-        logging.info(f"  {k:>10s}:  ID mu={m1:.2f} sig={s1:.2f}  |  OOD mu={m2:.2f} sig={s2:.2f}")
+        m3, s3 = X_ood_chd[:, i].mean(), X_ood_chd[:, i].std()
+        logging.info(f"  {k:>10s}:  ID mu={m1:.2f} sig={s1:.2f}  |  OOD Chest mu={m2:.2f} sig={s2:.2f} |  OOD CHD mu={m3:.2f} sig={s3:.2f}")
 
-    plot_comparison(X_id, X_ood, d_id, d_ood)
+    plot_comparison(X_id, X_ood, d_id, d_ood, path="CheX vs Chest")
+    plot_comparison(X_id, X_ood_chd, d_id, d_ood_chd, path="CheX vs CHD")

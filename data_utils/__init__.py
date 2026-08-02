@@ -13,6 +13,7 @@ from .nih import NIH
 from .chexpert import CheXpert
 from .siim import SIIM
 from .chest_xray import ChestXray
+from .chd_cxr import CHD
 
 def build_dataset(args, split='train', ten_crop=False):
     transform = build_transform_xray(args, is_train=(split == 'train'), ten_crop=ten_crop)
@@ -37,6 +38,9 @@ def build_dataset(args, split='train', ten_crop=False):
         dataset = CheXpert(transform=transform, return_label=True, data_pct=args.data_pct, split=split)
     elif args.dataset == 'chest_xray':
         dataset = ChestXray(transform=transform, return_label=True, data_pct=args.data_pct, split=split)
+    elif args.dataset == 'chd':
+        logging.info(f'Dataset CHD: Pct={args.data_pct}')
+        dataset = CHD(transform=transform, return_label=True, data_pct=args.data_pct, split=split)
     else:
         raise NotImplementedError
     if args.dataset_cat > 1 and split == 'train':

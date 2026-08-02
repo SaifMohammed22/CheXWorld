@@ -26,7 +26,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 def build_args(seed, dataset):
-    """Synthetic args for building the chest_xray OOD dataset"""
+    """Synthetic args for building the OOD dataset"""
 
     defaults = {
         "dataset": dataset,
@@ -55,8 +55,8 @@ def build_args(seed, dataset):
     return Namespace(**defaults)
 
 
-def build_cp_dataset(args):
-    dataset = build_dataset(args, split="train")
+def build_cp_dataset(args, split):
+    dataset = build_dataset(args, split=split)
     logger.info(
         f"loaded {type(dataset).__name__} set with {len(dataset)} samples")
     return dataset
@@ -162,14 +162,14 @@ def vanilla_cp(model, dataset, args):
 if __name__ == "__main__":
     seeds = list(range(2))
     # sanity check
-    dataset = build_cp_dataset(build_args(seeds[0]))
+    dataset = build_cp_dataset(build_args(seeds[0], "chest_xray"), split="train")
     model = load_model()
     forward_pass(model, dataset)
 
     coverages = []
     for seed in seeds:
-        args = build_args(seed)
-        dataset = build_cp_dataset(args)
+        args = build_args(seed, "chest_xray")
+        dataset = build_cp_dataset(args, split="train")
         _, _, _, accepted = vanilla_cp(model, dataset, args)
         coverages.append(accepted.float().mean().item())
 

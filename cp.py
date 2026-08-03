@@ -49,7 +49,7 @@ def build_args(seed, dataset):
         "shuffle_seed": seed,
         # cp related
         "alpha": 0.1,
-        "calib_fraction": 0.2,
+        "calib_fraction": 0.8,
     }
 
     return Namespace(**defaults)
@@ -161,14 +161,11 @@ def vanilla_cp(model, dataset, args):
 
 if __name__ == "__main__":
     seeds = list(range(2))
-    # sanity check
-    dataset = build_cp_dataset(build_args(seeds[0], "chest_xray"), split="train")
     model = load_model()
-    forward_pass(model, dataset)
 
     coverages = []
     for seed in seeds:
-        args = build_args(seed, "chest_xray")
+        args = build_args(seed, "chd")
         dataset = build_cp_dataset(args, split="train")
         _, _, _, accepted = vanilla_cp(model, dataset, args)
         coverages.append(accepted.float().mean().item())

@@ -92,7 +92,7 @@ def plot_comparison(X_id, X_ood, d_id, d_ood, path="datasets_comparison.png"):
 
     fig.delaxes(axes[5])
 
-    plt.suptitle("Dataset Comparison: CheXpert (ID) vs ChestXray (OOD)", fontsize=14)
+    plt.suptitle(path, fontsize=14)
     plt.tight_layout()
     plt.savefig(path, dpi=150)
     logging.info(f"Saved {path}")
